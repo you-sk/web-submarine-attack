@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>潜水艦ゲーム</title>
+    <!-- Tailwind CSSをCDN経由で読み込み -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tone.js (音声ライブラリ) をCDN経由で読み込み -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <style>
+        /* グローバルフォント設定 */
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow: hidden; /* スクロールバーを非表示 */
+        }
+        .game-wrapper {
+            position: relative;
+            width: 500px;
+        }
+        /* キャンバスの基本的なスタイル */
+        canvas {
+            border-radius: 12px; /* 角丸 */
+            box-shadow: 0 4px_12px rgba(0, 0, 0, 0.1); /* 影 */
+            cursor: crosshair; /* マウスカーソルをクロスヘアに変更 */
+            background-color: #87CEEB; /* 水色（海）*/
+        }
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center; /* 中央揃え */
+            gap: 1rem; /* 要素間のスペース */
+            padding: 1.5rem;
+            background-color: white;
+            border-radius: 0.5rem;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            height: 650px; /* コンテナの高さを固定 */
+            width: 564px; /* コンテナの幅を固定 */
+        }
+        .game-info {
+            display: flex;
+            justify-content: space-between;
+            width: 500px; /* キャンバスと合わせる */
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #333;
+        }
+        /* 画面共通のボタンのスタイル */
+        .btn {
+            padding: 0.75rem 1.5rem;
+            font-size: 1.2em;
+            font-weight: bold;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            width: 200px; /* ボタンの幅を統一 */
+            text-align: center;
+        }
+        .btn-easy { background-color: #22c55e; } /* 緑 */
+        .btn-easy:hover { background-color: #16a34a; }
+        .btn-normal { background-color: #3b82f6; } /* 青 */
+        .btn-normal:hover { background-color: #2563eb; }
+        .btn-hard { background-color: #ef4444; } /* 赤 */
+        .btn-hard:hover { background-color: #dc2626; }
+        .btn-return { background-color: #6b7280; } /* グレー */
+        .btn-return:hover { background-color: #4b5563; }
+
+
+        /* スクリーン共通スタイル */
+        .screen {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            height: 100%;
+            gap: 1rem;
+        }
+        
+        #gameScreen {
+            display: none; /* 最初は非表示 */
+        }
+        
+        /* モーダルウィンドウ */
+        #modal {
+            display: none; /* 最初は非表示 */
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            border-radius: 0.5rem; /* 親要素の角丸に合わせる */
+        }
+        .modal-content {
+            background-color: white;
+            padding: 2rem 3rem;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+        }
+        .modal-title {
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+        .modal-message {
+            font-size: 1.2em;
+            margin-bottom: 1.5rem;
+        }
+        /* デバッグ用チェックボックス */
+        .debug-controls {
+            margin-top: 1rem;
+            color: #4b5563;
+        }
+        .difficulty-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen bg-gray-100">
+    <div class="game-container">
+        <!-- タイトル画面 -->
+        <div id="titleScreen" class="screen">
+            <h1 class="text-5xl font-bold text-blue-800 mb-8">潜水艦ゲーム</h1>
+            <div class="difficulty-buttons">
+                <button id="easyButton" class="btn btn-easy" data-difficulty="easy">EASY</button>
+                <button id="normalButton" class="btn btn-normal" data-difficulty="normal">NORMAL</button>
+                <button id="hardButton" class="btn btn-hard" data-difficulty="hard">HARD</button>
+            </div>
+        </div>
+
+        <!-- ゲーム画面 -->
+        <div id="gameScreen" class="screen">
+            <h1 class="text-3xl font-bold text-center text-blue-800">潜水艦ゲーム</h1>
+            <div class="game-info">
+                <span>潜水艦の残数: <span id="remainingSubmarines"></span></span>
+                <span>爆弾の残数: <span id="bombsLeft"></span></span>
+            </div>
+            <canvas id="seaCanvas" width="500" height="500"></canvas>
+        </div>
+
+        <!-- モーダルウィンドウ -->
+        <div id="modal">
+            <div class="modal-content">
+                <h2 id="modalTitle" class="modal-title"></h2>
+                <p id="modalMessage" class="modal-message"></p>
+                <button id="returnToTitleButton" class="btn btn-return">タイトルに戻る</button>
+            </div>
+        </div>
+    </div>
+    <!-- デバッグ用コントロール -->
+    <div class="debug-controls">
+        <label>
+            <input type="checkbox" id="debugCheckbox">
+            デバッグモード: 敵表示
+        </label>
+    </div>
+
+    <script>
+        // DOM要素の取得
+        const titleScreen = document.getElementById('titleScreen');
+        const gameScreen = document.getElementById('gameScreen');
+        const difficultyButtons = document.querySelectorAll('.difficulty-buttons button');
+        const canvas = document.getElementById('seaCanvas');
+        const ctx = canvas.getContext('2d');
+        const remainingSubmarinesSpan = document.getElementById('remainingSubmarines');
+        const bombsLeftSpan = document.getElementById('bombsLeft');
+        const modal = document.getElementById('modal');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalMessage = document.getElementById('modalMessage');
+        const returnToTitleButton = document.getElementById('returnToTitleButton');
+        const debugCheckbox = document.getElementById('debugCheckbox');
+
+        // --- ゲーム設定 ---
+        const NUMBER_OF_TARGETS = 8;
+        const RIPPLE_MAX_RADIUS = 75;
+        const difficultySettings = {
+            easy:   { initialBombs: 20, reward: 3 },
+            normal: { initialBombs: 20, reward: 2 },
+            hard:   { initialBombs: 15, reward: 1 }
+        };
+        // ------------------
+
+        // ゲーム状態の変数
+        let ripples = [], targets = [], explosions = [];
+        let remainingSubmarines, bombsLeft, bombsDropped, currentBombReward;
+        let gameState = 'title';
+        let isAudioReady = false;
+        let showEnemies = false; // デバッグ用
+        let waveTime = 0; // 海の波アニメーション用
+
+        /** 撃沈サウンドを再生する関数 */
+        function playSinkingSound() {
+            if (!isAudioReady) return;
+            const explosion = new Tone.MembraneSynth().toDestination();
+            const bubbles = new Tone.NoiseSynth({ noise: { type: 'brown' }, envelope: { attack: 0.05, decay: 0.2, sustain: 0.1, release: 0.8 }}).toDestination();
+            const now = Tone.now();
+            explosion.triggerAttackRelease("C2", "8n", now);
+            bubbles.triggerAttackRelease("2n", now + 0.1);
+        }
+
+        /** ゲームを初期化またはリセットする関数 */
+        function initializeGame(difficulty) {
+            ripples = []; targets = []; explosions = [];
+            
+            const settings = difficultySettings[difficulty];
+            remainingSubmarines = NUMBER_OF_TARGETS;
+            bombsLeft = settings.initialBombs;
+            currentBombReward = settings.reward;
+            bombsDropped = 0;
+
+            for (let i = 0; i < NUMBER_OF_TARGETS; i++) {
+                targets.push({ x: Math.random() * (canvas.width - 40) + 20, y: Math.random() * (canvas.height - 40) + 20, sunk: false });
+            }
+            updateUI();
+        }
+        
+        function updateUI() {
+            remainingSubmarinesSpan.textContent = remainingSubmarines;
+            bombsLeftSpan.textContent = bombsLeft;
+        }
+
+        function showModal(title, message, color = 'text-red-600') {
+            modalTitle.textContent = title;
+            modalTitle.className = `modal-title ${color}`;
+            modalMessage.textContent = message;
+            modal.style.display = 'flex';
+        }
+        
+        function drawSeaBackground() {
+            ctx.save();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.lineWidth = 1;
+            const waveAmplitude = 3, waveFrequency = 0.03;
+            for (let i = 0; i < 20; i++) {
+                const yOffset = (canvas.height / 20) * i;
+                ctx.beginPath();
+                ctx.moveTo(0, yOffset);
+                for (let x = 0; x < canvas.width; x++) {
+                    const y = yOffset + Math.sin(x * waveFrequency + waveTime + i * 0.5) * waveAmplitude;
+                    ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+
+        function drawSunkMarks() {
+            ctx.strokeStyle = '#374151'; ctx.fillStyle = 'white'; ctx.lineWidth = 2;
+            targets.forEach(target => {
+                if (target.sunk) {
+                    const poleHeight = 20, flagWidth = 12, flagHeight = 8, x = target.x, y = target.y;
+                    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - poleHeight); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(x, y - poleHeight); ctx.lineTo(x + flagWidth, y - poleHeight + flagHeight / 2); ctx.lineTo(x, y - poleHeight + flagHeight); ctx.closePath(); ctx.fill(); ctx.stroke();
+                }
+            });
+        }
+
+        function drawTargets() {
+            if (!showEnemies) return;
+            ctx.strokeStyle = 'red'; ctx.lineWidth = 3;
+            targets.forEach(target => {
+                if (!target.sunk) {
+                    const size = 10;
+                    ctx.beginPath(); ctx.moveTo(target.x - size, target.y - size); ctx.lineTo(target.x + size, target.y + size); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(target.x + size, target.y - size); ctx.lineTo(target.x - size, target.y + size); ctx.stroke();
+                }
+            });
+        }
+        
+        function drawExplosions() {
+            for (let i = explosions.length - 1; i >= 0; i--) {
+                const exp = explosions[i];
+                ctx.fillStyle = `rgba(255, 165, 0, ${exp.alpha})`;
+                ctx.beginPath(); ctx.arc(exp.x, exp.y, exp.radius, 0, Math.PI * 2); ctx.fill();
+                exp.radius += 0.5; exp.alpha -= 0.02;
+                if (exp.alpha <= 0) explosions.splice(i, 1);
+            }
+        }
+
+        // --- イベントハンドラ ---
+        difficultyButtons.forEach(button => {
+            button.addEventListener('click', async (e) => {
+                if (!isAudioReady) {
+                    await Tone.start(); isAudioReady = true;
+                }
+                const difficulty = e.target.dataset.difficulty;
+                titleScreen.style.display = 'none';
+                gameScreen.style.display = 'flex';
+                modal.style.display = 'none';
+                gameState = 'playing';
+                initializeGame(difficulty);
+            });
+        });
+
+        returnToTitleButton.addEventListener('click', () => {
+            modal.style.display = 'none'; gameScreen.style.display = 'none';
+            titleScreen.style.display = 'flex'; gameState = 'title';
+        });
+        
+        debugCheckbox.addEventListener('change', (e) => {
+            showEnemies = e.target.checked;
+        });
+
+        canvas.addEventListener('click', (event) => {
+            if (gameState !== 'playing') return;
+            const rect = canvas.getBoundingClientRect();
+            const clickX = event.clientX - rect.left;
+            const clickY = event.clientY - rect.top;
+
+            bombsLeft--; bombsDropped++;
+            
+            for (const target of targets) {
+                if (!target.sunk) {
+                    const hitBox = 5;
+                    if (clickX >= target.x - hitBox && clickX <= target.x + hitBox && clickY >= target.y - hitBox && clickY <= target.y + hitBox) {
+                        target.sunk = true; remainingSubmarines--; bombsLeft += currentBombReward;
+                        explosions.push({ x: target.x, y: target.y, radius: 5, alpha: 1 });
+                        playSinkingSound();
+                        break;
+                    }
+                }
+            }
+
+            ripples.push({ x: clickX, y: clickY, radius: 0, maxRadius: RIPPLE_MAX_RADIUS, alpha: 1, hitTarget: false, stopped: false });
+            updateUI();
+
+            if (remainingSubmarines === 0) {
+                gameState = 'cleared';
+                setTimeout(() => showModal('ゲームクリア！', `投下した爆弾の数: ${bombsDropped}個`, 'text-blue-600'), 500);
+            } else if (bombsLeft <= 0) {
+                bombsLeft = 0; updateUI();
+                gameState = 'gameOver';
+                setTimeout(() => showModal('ゲームオーバー', '爆弾を使い果たしました。'), 500);
+            }
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (gameState !== 'title') {
+                drawSeaBackground();
+                for (let i = ripples.length - 1; i >= 0; i--) {
+                    const r = ripples[i];
+                    if (!r.stopped && r.radius < r.maxRadius) r.radius += 0.8;
+                    if (!r.hitTarget && !r.stopped) {
+                        for (const target of targets) {
+                            if (!target.sunk && Math.hypot(r.x - target.x, r.y - target.y) <= r.radius) {
+                                r.hitTarget = true; r.stopped = true; break;
+                            }
+                        }
+                    }
+                    if (!r.hitTarget && r.radius >= r.maxRadius) r.stopped = true;
+                    ctx.beginPath();
+                    if (r.hitTarget) ctx.strokeStyle = `rgba(0, 0, 139, 0.8)`;
+                    else if (r.stopped) ctx.strokeStyle = `rgba(255, 255, 255, 0.3)`;
+                    else ctx.strokeStyle = `rgba(255, 255, 255, 1)`;
+                    ctx.lineWidth = 2; ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2); ctx.stroke();
+                }
+                drawSunkMarks(); drawExplosions(); drawTargets();
+            }
+            waveTime += 0.03;
+        }
+        animate();
+    </script>
+</body>
+</html>
